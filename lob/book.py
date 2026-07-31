@@ -3,12 +3,22 @@
 Prices are integer ticks throughout. Floating point prices in a matching engine
 invite equality bugs, so the book never sees a float.
 
+Data structures
+---------------
 Each side keeps a dict mapping price -> deque of resting orders. The deque gives
-FIFO time priority within a level in O(1) at both ends.
+FIFO time priority within a level in O(1) at both ends. Finding the best price
+would be O(number of levels) if we scanned the dict keys, so each side also keeps
+a heap of prices: a min-heap for asks, and a max-heap for bids (negated prices).
+
+Heaps cannot delete an arbitrary element, so emptied levels are removed lazily:
+`_best` pops stale prices off the top until it finds one that still has resting
+volume. Every price is pushed at most once per time it becomes non-empty, so the
+amortised cost stays O(log L).
 """
 
 from __future__ import annotations
 
+import heapq
 import itertools
 from collections import deque
 from dataclasses import dataclass, field
@@ -77,22 +87,26 @@ class OrderBook:
 
     def __init__(self) -> None:
         self._levels: dict[Side, dict[int, deque[Order]]] = {Side.BUY: {}, Side.SELL: {}}
+        self._heaps: dict[Side, list[int]] = {Side.BUY: [], Side.SELL: []}
         self._orders: dict[int, Order] = {}
         self._ids = itertools.count(1)
         self.time = 0
 
     # ------------------------------------------------------------------ state
 
-    def _best(self, side: Side) -> int | None:
-        """Best price on `side`, or None if that side is empty.
+    def _heap_key(self, side: Side, price: int) -> int:
+        """Bids are stored negated so that a min-heap yields the highest price."""
+        return -price if side is Side.BUY else price
 
-        Scans the live price keys, so this is O(number of levels). Fine while
-        the book is shallow; the first thing to fix if it stops being.
-        """
-        prices = [price for price, queue in self._levels[side].items() if queue]
-        if not prices:
-            return None
-        return max(prices) if side is Side.BUY else min(prices)
+    def _best(self, side: Side) -> int | None:
+        """Best price on `side`, discarding levels emptied since they were pushed."""
+        heap, levels = self._heaps[side], self._levels[side]
+        while heap:
+            price = -heap[0] if side is Side.BUY else heap[0]
+            if levels.get(price):
+                return price
+            heapq.heappop(heap)
+        return None
 
     @property
     def best_bid(self) -> int | None:
@@ -224,5 +238,6 @@ class OrderBook:
         levels = self._levels[order.side]
         if order.price not in levels:
             levels[order.price] = deque()
+            heapq.heappush(self._heaps[order.side], self._heap_key(order.side, order.price))
         levels[order.price].append(order)
         self._orders[order.order_id] = order
