@@ -107,6 +107,17 @@ def test_book_is_never_left_crossed(book):
     assert book.best_bid is None or book.best_ask is None or book.best_bid < book.best_ask
 
 
+def test_emptied_level_is_not_resurrected_by_the_price_heap(book):
+    # Exercises the lazy-deletion path: the heap still holds 100 after the level
+    # is consumed, and _best must skip it rather than report a phantom bid.
+    book.submit("a", Side.BUY, 5, 100)
+    book.submit("t", Side.SELL, 5, 100)
+    assert book.best_bid is None
+
+    book.submit("b", Side.BUY, 5, 99)
+    assert book.best_bid == 99
+
+
 def test_quantity_is_conserved_across_a_multi_level_sweep(book):
     for price in (100, 101, 102):
         book.submit("mm", Side.SELL, 4, price)
