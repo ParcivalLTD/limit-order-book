@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .book import OrderBook
+from .book import OrderBook, Trade
 
 
 @dataclass
@@ -56,3 +56,48 @@ class MarketState:
     true_value: float
     public_estimate: float
     book: OrderBook
+
+
+@dataclass
+class FillRecord:
+    """One of the market maker's fills, stamped with the true value at the time.
+
+    Storing V at execution is what makes the P&L decomposition in `metrics.py`
+    possible: it separates "what I charged over fair" from "what the position
+    did afterwards".
+    """
+
+    step: int
+    price: int
+    signed_quantity: int  # + when the maker bought, - when it sold
+    true_value: float
+    was_maker: bool
+
+
+class Ledger:
+    """Tracks cash, inventory and per-fill history for one agent."""
+
+    def __init__(self, agent_id: str) -> None:
+        self.agent_id = agent_id
+        self.cash = 0.0
+        self.inventory = 0
+        self.fills: list[FillRecord] = []
+
+    def apply(self, trade: Trade, step: int, true_value: float) -> None:
+        dq = trade.signed_quantity_for(self.agent_id)
+        if dq == 0:
+            return
+        self.cash -= dq * trade.price
+        self.inventory += dq
+        self.fills.append(
+            FillRecord(
+                step=step,
+                price=trade.price,
+                signed_quantity=dq,
+                true_value=true_value,
+                was_maker=(trade.maker_id == self.agent_id),
+            )
+        )
+
+    def mark_to_value(self, true_value: float) -> float:
+        return self.cash + self.inventory * true_value
