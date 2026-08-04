@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .book import OrderBook, Trade
+from .book import OrderBook, Side, Trade
 
 
 @dataclass
@@ -101,3 +101,88 @@ class Ledger:
 
     def mark_to_value(self, true_value: float) -> float:
         return self.cash + self.inventory * true_value
+
+
+@dataclass
+class SimulationResult:
+    ledger: Ledger
+    trades: list[Trade]
+    true_values: np.ndarray
+    inventory_path: np.ndarray
+    mid_path: np.ndarray
+
+    @property
+    def total_pnl(self) -> float:
+        return self.ledger.mark_to_value(float(self.true_values[-1]))
+
+    @property
+    def n_fills(self) -> int:
+        return len(self.ledger.fills)
+
+
+@dataclass
+class Simulation:
+    """One trading session.
+
+    Order within a step matters and is deliberate: liquidity is refreshed
+    before flow arrives, so quotes are always exposed to at least one round of
+    trading before they can be pulled. A market maker that could cancel after
+    seeing the order would never lose money, which is not a market.
+    """
+
+    market_maker: object
+    takers: list  # agents that consume liquidity
+    background: object | None = None
+    n_steps: int = 20_000
+    value_process: ValueProcess = field(default_factory=ValueProcess)
+    ewma_alpha: float = 0.05
+    seed: int = 0
+
+    def run(self) -> SimulationResult:
+        rng = np.random.default_rng(self.seed)
+        book = OrderBook()
+        ledger = Ledger(self.market_maker.agent_id)
+
+        public_estimate = self.value_process.value
+        all_trades: list[Trade] = []
+        true_values = np.empty(self.n_steps)
+        inventory_path = np.empty(self.n_steps)
+        mid_path = np.full(self.n_steps, np.nan)
+
+        for step in range(self.n_steps):
+            v = self.value_process.step(rng)
+            state = MarketState(
+                step=step, true_value=v, public_estimate=public_estimate, book=book
+            )
+
+            if self.background is not None:
+                self.background.act(state, rng)
+            self.market_maker.act(state, rng)
+
+            step_trades: list[Trade] = []
+            for taker in self.takers:
+                step_trades.extend(taker.act(state, rng))
+
+            for trade in step_trades:
+                ledger.apply(trade, step, v)
+            all_trades.extend(step_trades)
+
+            # The public estimate is the tape, not the truth. It only updates
+            # when something prints, which is why it lags through a jump.
+            for trade in step_trades:
+                public_estimate += self.ewma_alpha * (trade.price - public_estimate)
+
+            self.market_maker.inventory = ledger.inventory
+            true_values[step] = v
+            inventory_path[step] = ledger.inventory
+            mid = book.mid
+            if mid is not None:
+                mid_path[step] = mid
+
+        return SimulationResult(
+            ledger=ledger,
+            trades=all_trades,
+            true_values=true_values,
+            inventory_path=inventory_path,
+            mid_path=mid_path,
+        )
