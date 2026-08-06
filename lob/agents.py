@@ -1,10 +1,12 @@
 """The agents.
 
-Two so far:
+Three so far:
 
 - `MarketMaker` quotes both sides off the tape. It is the subject of the study.
 - `NoiseTrader` buys and sells for reasons outside the model. It is the flow a
   market maker wants.
+- `InformedTrader` sees V and only trades when the book is wrong. It is the flow
+  a market maker cannot avoid taking along with the good flow.
 """
 
 from __future__ import annotations
@@ -80,3 +82,32 @@ class NoiseTrader:
         size = int(rng.integers(self.size_low, self.size_high + 1))
         _, trades = state.book.submit(self.agent_id, side, size, price=None)
         return trades
+
+
+@dataclass
+class InformedTrader:
+    """Sees V and takes whenever the book is mispriced by more than `edge_threshold`.
+
+    It is not clever about sizing or timing. It does not need to be: it only has
+    to be right on average, and the market maker's quote is stale by construction
+    every time the value jumps.
+    """
+
+    agent_id: str = "informed"
+    intensity: float = 0.25
+    edge_threshold: float = 1.0
+    size: int = 5
+
+    def act(self, state: MarketState, rng: np.random.Generator) -> list[Trade]:
+        if rng.random() > self.intensity:
+            return []
+        book, v = state.book, state.true_value
+
+        ask, bid = book.best_ask, book.best_bid
+        if ask is not None and v - ask > self.edge_threshold:
+            _, trades = book.submit(self.agent_id, Side.BUY, self.size, price=None)
+            return trades
+        if bid is not None and bid - v > self.edge_threshold:
+            _, trades = book.submit(self.agent_id, Side.SELL, self.size, price=None)
+            return trades
+        return []
