@@ -80,3 +80,30 @@ def decompose(result: SimulationResult) -> PnLBreakdown:
         max_abs_inventory=int(np.max(np.abs(result.inventory_path))),
         edge_per_contract=edge / volume,
     )
+
+
+def summarise(results: list[SimulationResult]) -> dict[str, float]:
+    """Mean and spread of the headline numbers across seeds.
+
+    Single-session results from this model are close to meaningless: the position
+    term swamps the edge term over one run. Everything reported in the README is
+    averaged over many seeds with a standard error attached.
+    """
+    breakdowns = [decompose(r) for r in results]
+    totals = np.array([b.total for b in breakdowns])
+    edges = np.array([b.edge for b in breakdowns])
+    positions = np.array([b.position for b in breakdowns])
+    volumes = np.array([b.volume for b in breakdowns], dtype=float)
+
+    return {
+        "total_mean": float(totals.mean()),
+        "total_std": float(totals.std(ddof=1)) if len(totals) > 1 else 0.0,
+        "total_stderr": float(totals.std(ddof=1) / np.sqrt(len(totals))) if len(totals) > 1 else 0.0,
+        "edge_mean": float(edges.mean()),
+        "edge_stderr": float(edges.std(ddof=1) / np.sqrt(len(edges))) if len(edges) > 1 else 0.0,
+        "position_mean": float(positions.mean()),
+        "position_std": float(positions.std(ddof=1)) if len(positions) > 1 else 0.0,
+        "volume_mean": float(volumes.mean()),
+        "edge_per_contract": float(edges.sum() / volumes.sum()) if volumes.sum() else 0.0,
+        "mean_over_std": float(totals.mean() / totals.std(ddof=1)) if len(totals) > 1 and totals.std(ddof=1) > 0 else 0.0,
+    }
