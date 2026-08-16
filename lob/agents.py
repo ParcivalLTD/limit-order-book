@@ -1,8 +1,11 @@
 """The agents.
 
-Three so far:
+Four kinds, and the interesting behaviour comes from how they differ:
 
 - `MarketMaker` quotes both sides off the tape. It is the subject of the study.
+- `BackgroundLiquidity` also quotes off the tape, but wider and randomly. It is
+  the competition, and it is the reason a wide quote earns nothing rather than
+  earning a lot per trade.
 - `NoiseTrader` buys and sells for reasons outside the model. It is the flow a
   market maker wants.
 - `InformedTrader` sees V and only trades when the book is wrong. It is the flow
@@ -60,6 +63,40 @@ class MarketMaker:
             oid, _ = book.submit(self.agent_id, Side.SELL, self.quote_size, ask)
             if oid is not None:
                 self._resting.append(oid)
+
+
+@dataclass
+class BackgroundLiquidity:
+    """Other liquidity providers, quoting off the same public tape but wider.
+
+    Their offsets are drawn fresh each step from `min_offset..max_offset`. Our
+    market maker is at the front of the queue only when it undercuts the draw,
+    so its fill rate falls as its own spread widens. Without this the model would
+    say wider is always better, which is the wrong answer to the wrong question.
+    """
+
+    agent_id: str = "bg"
+    min_offset: int = 2
+    max_offset: int = 14
+    quote_size: int = 5
+    n_quotes: int = 3
+
+    _resting: list[int] = field(default_factory=list)
+
+    def act(self, state: MarketState, rng: np.random.Generator) -> None:
+        book = state.book
+        for order_id in self._resting:
+            book.cancel(order_id)
+        self._resting = []
+
+        centre = state.public_estimate
+        offsets = rng.integers(self.min_offset, self.max_offset + 1, size=self.n_quotes)
+        for offset in offsets:
+            for side, sign in ((Side.BUY, -1), (Side.SELL, 1)):
+                price = int(round(centre + sign * int(offset)))
+                oid, _ = book.submit(self.agent_id, side, self.quote_size, price)
+                if oid is not None:
+                    self._resting.append(oid)
 
 
 @dataclass
