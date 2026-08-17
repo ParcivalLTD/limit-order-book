@@ -82,6 +82,32 @@ def decompose(result: SimulationResult) -> PnLBreakdown:
     )
 
 
+def markout(result: SimulationResult, horizons: tuple[int, ...] = (1, 10, 50, 200)) -> dict[int, float]:
+    """Average P&L per contract `h` steps after each fill, marked against true value.
+
+    This is the standard way a desk asks "is this flow any good". A fill that is
+    profitable at h=1 but loses at h=200 was picked off by someone who knew where
+    the value was going. A flat markout curve is uninformed flow, which is the
+    flow you want.
+    """
+    fills = result.ledger.fills
+    if not fills:
+        return {h: 0.0 for h in horizons}
+
+    values = result.true_values
+    n = len(values)
+    out: dict[int, float] = {}
+
+    for h in horizons:
+        pnl, volume = 0.0, 0
+        for f in fills:
+            future = values[min(f.step + h, n - 1)]
+            pnl += f.signed_quantity * (future - f.price)
+            volume += abs(f.signed_quantity)
+        out[h] = pnl / volume if volume else 0.0
+    return out
+
+
 def summarise(results: list[SimulationResult]) -> dict[str, float]:
     """Mean and spread of the headline numbers across seeds.
 
