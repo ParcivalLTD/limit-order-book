@@ -79,3 +79,53 @@ def save_spread_sweep(rows: list[dict]) -> Path:
 
     fig.tight_layout()
     return _save(fig, "spread_sweep.png")
+
+
+def save_adverse_selection(rows: list[dict]) -> Path:
+    """P&L against the informed arrival rate, with volume on a second axis.
+
+    The volume series is the whole reason this figure has a twin axis: it rises
+    monotonically while the P&L falls, and putting them on the same picture is
+    the clearest way to show that fill rate is not a health metric.
+    """
+    x = [r["informed_intensity"] for r in rows]
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.4))
+    ax.errorbar(
+        x, [r["total_mean"] for r in rows], yerr=[r["total_stderr"] for r in rows],
+        color=TOTAL_C, marker="o", capsize=3, label="total",
+    )
+    ax.plot(x, [r["edge_mean"] for r in rows], color=EDGE_C, marker="s", label="edge")
+    _style(ax, "informed arrival rate", "P&L per session", "More toxic flow, more volume, less money")
+
+    twin = ax.twinx()
+    twin.plot(
+        x, [r["volume_mean"] for r in rows],
+        color=VOLUME_C, marker="^", linestyle="--", alpha=0.85, label="volume",
+    )
+    twin.set_ylabel("contracts traded")
+
+    handles = ax.get_legend_handles_labels()[0] + twin.get_legend_handles_labels()[0]
+    labels = ax.get_legend_handles_labels()[1] + twin.get_legend_handles_labels()[1]
+    ax.legend(handles, labels, frameon=False, fontsize=9, loc="center left")
+
+    fig.tight_layout()
+    return _save(fig, "adverse_selection.png")
+
+
+def save_markout_curves(curves: dict[float, dict[int, float]]) -> Path:
+    """Average P&L per contract h steps after each fill, one line per spread."""
+    fig, ax = plt.subplots(figsize=(7, 4.2))
+    colours = {1.0: EDGE_C, 4.0: TOTAL_C, 8.0: VOLUME_C}
+
+    for hs, curve in sorted(curves.items()):
+        horizons = sorted(curve)
+        ax.plot(
+            horizons, [curve[h] for h in horizons],
+            marker="o", color=colours.get(hs), label=f"half spread {hs:.0f}",
+        )
+
+    _style(ax, "horizon h (steps after fill)", "P&L per contract", "Markout is flat: the damage lands immediately")
+    ax.legend(frameon=False, fontsize=9)
+    fig.tight_layout()
+    return _save(fig, "markout.png")
