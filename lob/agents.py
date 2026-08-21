@@ -24,18 +24,21 @@ from .market import MarketState
 
 @dataclass
 class MarketMaker:
-    """Quotes a symmetric spread around its estimate of fair value.
+    """Quotes a symmetric spread around its estimate of fair value, skewed by inventory.
 
-    bid = fair - half_spread
-    ask = fair + half_spread
+    bid = fair - half_spread - skew * inventory
+    ask = fair + half_spread - skew * inventory
 
-    Its only risk control is the hard position limit. Note that the limit pulls
-    just the quote that would make the position worse; the other side stays up.
+    The skew term is the only risk control other than the hard position limit.
+    Long inventory pushes both quotes down, which makes the maker keener to sell
+    and more reluctant to buy. It costs edge on every quote it moves, and buys
+    back variance. `experiments/inventory_skew.py` measures that trade.
     """
 
     agent_id: str = "mm"
     half_spread: float = 4.0
     quote_size: int = 5
+    inventory_skew: float = 0.0
     max_inventory: int = 60
 
     inventory: int = 0
@@ -47,7 +50,7 @@ class MarketMaker:
             book.cancel(order_id)
         self._resting = []
 
-        centre = state.public_estimate
+        centre = state.public_estimate - self.inventory_skew * self.inventory
         bid = int(round(centre - self.half_spread))
         ask = int(round(centre + self.half_spread))
         if ask <= bid:  # never quote a crossed or locked market
