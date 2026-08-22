@@ -129,3 +129,38 @@ def save_markout_curves(curves: dict[float, dict[int, float]]) -> Path:
     ax.legend(frameon=False, fontsize=9)
     fig.tight_layout()
     return _save(fig, "markout.png")
+
+
+def save_inventory_skew(rows: list[dict]) -> Path:
+    """The skew result: risk falls as expected, and the mean rises unexpectedly."""
+    skew = [r["skew"] for r in rows]
+
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.2))
+
+    left.plot(skew, [r["total_mean"] for r in rows], color=TOTAL_C, marker="o", label="total")
+    left.plot(skew, [r["edge_mean"] for r in rows], color=EDGE_C, marker="s", label="edge")
+    left.fill_between(
+        skew,
+        [r["total_mean"] - r["total_std"] for r in rows],
+        [r["total_mean"] + r["total_std"] for r in rows],
+        color=TOTAL_C, alpha=0.12, label="+/- 1 sd across sessions",
+    )
+    _style(left, "inventory skew", "P&L per session", "The gain lands in edge, not position")
+    left.legend(frameon=False, fontsize=9)
+
+    right.plot(skew, [r["mean_over_std"] for r in rows], color=TOTAL_C, marker="o", label="mean / std")
+    best = max(rows, key=lambda r: r["mean_over_std"])
+    right.axvline(best["skew"], color=TOTAL_C, linestyle=":", alpha=0.6)
+    _style(right, "inventory skew", "mean / std across sessions", "Risk-adjusted return, and the position it carries")
+
+    twin = right.twinx()
+    twin.plot(
+        skew, [r["max_abs_inventory"] for r in rows],
+        color=POSITION_C, marker="^", linestyle="--", label="avg peak |inventory|",
+    )
+    twin.set_ylabel("avg peak |inventory|")
+    right.legend(frameon=False, fontsize=9, loc="lower right")
+    twin.legend(frameon=False, fontsize=9, loc="upper right")
+
+    fig.tight_layout()
+    return _save(fig, "inventory_skew.png")
