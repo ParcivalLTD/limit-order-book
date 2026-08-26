@@ -18,6 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 FIGURES = Path(__file__).resolve().parent.parent / "figures"
 
@@ -164,3 +165,32 @@ def save_inventory_skew(rows: list[dict]) -> Path:
 
     fig.tight_layout()
     return _save(fig, "inventory_skew.png")
+
+
+def save_session_trace(result) -> Path:
+    """One session end to end: what the maker was quoting against the truth.
+
+    Mostly a sanity check rather than a result. If the mid is not tracking the
+    value, or the inventory is pinned at the limit for long stretches, something
+    is wrong with the configuration and no summary table will tell you that.
+    """
+    steps = np.arange(len(result.true_values))
+
+    fig, (top, bottom) = plt.subplots(
+        2, 1, figsize=(10, 5.6), sharex=True, gridspec_kw={"height_ratios": [2, 1]}
+    )
+
+    top.plot(steps, result.true_values, color=EDGE_C, linewidth=1.0, label="true value V")
+    top.plot(steps, result.mid_path, color=TOTAL_C, linewidth=0.8, alpha=0.8, label="book mid")
+    top.set_ylabel("price (ticks)")
+    top.set_title("A single session: the mid chases the value through every jump", fontsize=10, loc="left")
+    top.grid(alpha=0.25, linewidth=0.6)
+    top.legend(frameon=False, fontsize=9)
+
+    bottom.plot(steps, result.inventory_path, color=POSITION_C, linewidth=0.9)
+    bottom.axhline(0, color="black", linewidth=0.8, alpha=0.5)
+    bottom.fill_between(steps, 0, result.inventory_path, color=POSITION_C, alpha=0.2)
+    _style(bottom, "step", "inventory", "")
+
+    fig.tight_layout()
+    return _save(fig, "session_trace.png")
