@@ -221,6 +221,20 @@ experiment 1.
 
 ---
 
+## What I would fix
+
+- **The spread sweep was run unskewed.** Given experiment 3, the optimal spread
+  almost certainly shifts once skew is on. The two parameters need a joint sweep,
+  not two independent ones.
+- **Informed traders see the present, not the future**, which is why the markout
+  curves are flat (above). This is the single least realistic thing in the model.
+- **The maker re-quotes every step regardless.** No latency, no queue position
+  modelling, no decision about *when* to pull. Real makers lose most of their
+  money in the milliseconds where cancelling was possible and didn't happen.
+- **One asset, no hedging.** Inventory risk here can only be managed by quoting.
+- **Single core, ~5 minutes.** Sessions are embarrassingly parallel; a
+  `ProcessPoolExecutor` would make wider sweeps cheap.
+
 ## Layout
 
 ```
