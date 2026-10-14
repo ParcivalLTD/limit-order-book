@@ -1,0 +1,5 @@
+; A small command-line program used by the differential test: it reads order
+; operations on stdin and prints what the engine did, one line per operation.
+(executable
+ (name replay)
+ (libraries base stdio lob))

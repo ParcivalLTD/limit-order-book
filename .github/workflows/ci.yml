@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  - push
+  - pull_request
+
+permissions: read-all
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests -q
+
+  ocaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "4.14"
+      - run: opam install -y dune base stdio ppx_sexp_conv ppx_compare ppx_expect qcheck-core
+      - name: Build and run the expect and property tests
+        working-directory: ocaml
+        run: |
+          opam exec -- dune build
+          opam exec -- dune runtest
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Differential test against the Python engine
+        run: python ocaml/diff/differential.py --streams 500

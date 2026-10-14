@@ -1,0 +1,8 @@
+; Tests live in their own library. [inline_tests] tells dune to collect every
+; [let%expect_test] in these files and run them under [dune test].
+(library
+ (name lob_test)
+ (libraries base stdio lob qcheck-core)
+ (inline_tests)
+ (preprocess
+  (pps ppx_sexp_conv ppx_expect)))

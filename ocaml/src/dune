@@ -1,0 +1,8 @@
+; The engine itself: a library called [lob].
+; [base] is Jane Street's standard library. The two ppx rewriters generate code
+; from [@@deriving ...] annotations: s-expression printers and comparisons.
+(library
+ (name lob)
+ (libraries base)
+ (preprocess
+  (pps ppx_sexp_conv ppx_compare)))
