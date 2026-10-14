@@ -12,18 +12,23 @@ type op =
 
 let gen_side = QCheck.Gen.map (fun b -> if b then Side.Buy else Side.Sell) QCheck.Gen.bool
 
+(* A weighted choice: 6 in 9 limit orders, 1 in 9 market orders, 2 in 9 cancels.
+   Built from [int_range] and [>>=] (bind) so it compiles on every QCheck
+   version; [Gen.frequency] is deprecated from qcheck-core 0.91 on. *)
 let gen_op =
   let open QCheck.Gen in
-  frequency
-    [ ( 6
-      , map3
-          (fun side qty price -> Submit (side, qty, Book.Limit price))
-          gen_side
-          (int_range 1 20)
-          (int_range 95 105) )
-    ; 1, map2 (fun side qty -> Submit (side, qty, Book.Market)) gen_side (int_range 1 30)
-    ; 2, map (fun id -> Cancel id) (int_range 1 60)
-    ]
+  int_range 0 8
+  >>= fun k ->
+  if k < 6
+  then
+    map3
+      (fun side qty price -> Submit (side, qty, Book.Limit price))
+      gen_side
+      (int_range 1 20)
+      (int_range 95 105)
+  else if k < 7
+  then map2 (fun side qty -> Submit (side, qty, Book.Market)) gen_side (int_range 1 30)
+  else map (fun id -> Cancel id) (int_range 1 60)
 ;;
 
 let gen_ops = QCheck.Gen.(list_size (int_range 1 80) gen_op)
